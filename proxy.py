@@ -88,7 +88,7 @@ async def proxy_handler(request):
             connector_kwargs['ssl'] = ssl_context
         
         connector = aiohttp.TCPConnector(**connector_kwargs)
-        timeout = ClientTimeout(total=30)
+        timeout = ClientTimeout(total=None)  # No timeout for large file streaming
         
         async with ClientSession(
             connector=connector,
@@ -155,7 +155,7 @@ async def proxy_handler(request):
                     # For HEAD requests, don't stream content
                     if not is_head_request:
                         try:
-                            async for chunk in response.content.iter_chunked(8192):
+                            async for chunk in response.content.iter_chunked(65536):
                                 await resp.write(chunk)
                         except (ConnectionResetError, BrokenPipeError, asyncio.CancelledError) as e:
                             # Client disconnected - this is normal for video streaming
@@ -177,8 +177,9 @@ async def proxy_handler(request):
                     # Return without error response for normal disconnections
                     return web.Response(status=499)  # Client closed request
                 
-                # Log the actual error
-                log_with_emoji('❌', f"Proxy error: {proxy_error}")
+                # Log the actual error with full details
+                log_with_emoji('❌', f"Proxy error: {type(proxy_error).__name__}: {proxy_error}")
+                logger.exception("Full proxy error details:")
                 
                 # Check if it's an upstream proxy connection error
                 if USE_UPSTREAM and ('proxy' in str(proxy_error).lower() or 'connection' in str(proxy_error).lower()):
